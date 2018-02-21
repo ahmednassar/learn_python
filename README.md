@@ -1,2 +1,4 @@
 # learn_python
 I'm creating this repo to store my applications while learning python
+
+First Project is Automation resolver for Minesweeper. Actually, I was reviewing some materials on python and playing minesweeper in the back-ground. I had a problem that my time is not good, I thought to make a system help me fix that :)
