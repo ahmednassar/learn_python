@@ -1,0 +1,331 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Nov  8 13:16:43 2018
+
+@author: anassar
+"""
+
+import pyscreenshot
+import pyautogui, sys
+import operator
+import math
+import numpy as np
+from PIL import Image
+import time
+from pynput import mouse
+from pynput.mouse import Listener, Button, Controller
+
+p = (295, 179)
+cell_width = 16
+cell_hight = 16.0
+cell_trained_size = (24,24)
+cell_dimentions = (30,16)
+cell_margine = 3 #I use this margine get into the core cell
+cell_upper_margine = 1
+cell_margine_2 = 6 #I use this margine get into the core cell
+cell_upper_margine_2 = 2
+
+cell_list = []
+cell_names = {0:'one', 1:'two', 2:'three', 3:'four', 4:'five', 5:'six', 6:'empty'
+              , 7:'covered', 8:'marked', 9:'blow', 10:'bad', 11:'bad_1'}
+cell_numbers = {'one' : 0, 'two':1, 'three':2, 'four':3, 'five':4, 'six':5, 'empty':6
+              , 'covered':7, 'marked':8, 'blow':9, 'bad':10, 'bad_1':11}
+
+mouse_both_click = 'both'
+mouse_right_click = 'right'
+mouse_left_click = 'left'
+
+pyautogui.FAILSAFE = True
+pyautogui.PAUSE = 0
+
+
+def init_trained_cell(size):
+    global cell_list
+    i1 = list(Image.open("cell_one.png").resize(size).getdata())
+    #Image.open("cell_one.png").resize(size).show()
+    i2 = list(Image.open("cell_two.png").resize(size).getdata())
+    i3 = list(Image.open("cell_three.png").resize(size).getdata())
+    #Image.open("cell_three.png").resize(size).show()
+    i4 = list(Image.open("cell_four.png").resize(size).getdata())
+    i5 = list(Image.open("cell_five.png").resize(size).getdata())
+    i6 = list(Image.open("cell_six.png").resize(size).getdata())
+    e_cell = list(Image.open("cell_empty.png").resize(size).getdata())
+    c_cell = list(Image.open("cell_covered.png").resize(size).getdata())
+    m_cell = list(Image.open("cell_marked.png").resize(size).getdata())
+    blow_cell = list(Image.open("cell_blow.png").resize(size).getdata())
+    bad_cell = list(Image.open("cell_bad.png").resize(size).getdata())
+    bad_1_cell = list(Image.open("cell_bad_1.png").resize(size).getdata())
+    cell_list = [i1,i2,i3,i4,i5,i6,e_cell,c_cell,
+                 m_cell, blow_cell, bad_cell, bad_1_cell]
+def insight_training():
+    print('starting training cell insight')
+    global_data = []
+    for g_data in cell_list:
+        distinct_data = {}
+        init_trained_cell((24,24))
+        for i in g_data:
+            if(i not in distinct_data.keys()):
+                distinct_data[i] = 0
+            else:
+                distinct_data[i] = distinct_data.get(i)+1
+        global_data.append(distinct_data)    
+    counter = 0
+    for i in global_data:
+        print(cell_names.get(counter))
+        counter +=1
+        for key, value in i.items():
+            if(value > 40):
+                print(key, ' -- ', value)
+        print('----------------')
+#insight_training()
+        
+        
+def cSub(p1, p2):
+    r,g,b,a = p1
+    x,y,z,s = p2
+    d1 = (abs(r-x) )
+    d2 = (abs(g-y))
+    d3 = (abs(b-z))
+    return (d1+d2+d3)
+
+def calculateDiff(a,b):
+    return sum(list(map(cSub, a, b)))
+def findBestMatch(a):
+    diff = []
+    #diff.append(calculateDiff(a, i4))
+    if(calculateDiff(a, cell_list[cell_numbers.get('covered')]) < 15):
+        return cell_numbers.get('covered')
+    if(calculateDiff(a, cell_list[cell_numbers.get('empty')]) < 15):
+        return cell_numbers.get('empty')
+    for cell in cell_list:
+        cost = calculateDiff(a, cell)
+        diff.append(cost)
+        if(cost < 15): 
+            break
+    return(diff.index(min(diff)))
+def getCellImg(x,y):
+    'this method is very slow takes about .2 second per cell, which does not make sense to work with it'
+    return pyscreenshot.grab(bbox=(p[0] + cell_upper_margine + (x*cell_width),
+                                   p[1] + cell_upper_margine + (y*cell_width),
+                                   p[0] - cell_margine + ((x+1)*cell_width),
+                                   p[1] - cell_margine + ((y+1)*cell_hight) ))
+
+def getCellImgFromImage_modified(img,x,y, c_width = cell_width):
+    'this method is much better performance .02 seconds for each cell'
+    return img.crop(((x*c_width)+2,
+                                   (y*c_width)+3,
+                                   ((x+1)*c_width) ,
+                                   ((y+1)*c_width)  ))
+
+def getCellImgFromImage(img,x,y, c_width = cell_width):
+    'this method is much better performance .02 seconds for each cell'
+    return img.crop((cell_upper_margine_2 + (x*c_width*2),
+                                   cell_upper_margine_2 + (y*c_width*2),
+                                   ((x+1)*c_width*2) - cell_margine_2,
+                                   ((y+1)*c_width*2) - cell_margine_2 ))
+
+
+def getFullImg():
+    return pyscreenshot.grab(bbox=(p[0] ,
+                                   p[1] ,
+                                   p[0] + (cell_width * cell_dimentions[0]),
+                                   p[1] + (cell_hight * cell_dimentions[1]) ))
+def getFullImgWithCoordinations(x,y, c_width = cell_width):
+    #print(c_width)
+    return pyscreenshot.grab(bbox=(x ,
+                                   y ,
+                                   x + (c_width * cell_dimentions[0]),
+                                   y + (c_width * cell_dimentions[1]) ))
+
+def moveMouseToCell_modified(x,y, cell_x, cell_y, c_width):
+    print(x+(cell_x*c_width) + 3)
+    print(y+(cell_y*c_width)+2,4)
+    pyautogui.moveTo(x+(cell_x*c_width) + 3, y+(cell_y*c_width)+2,4)
+
+def moveMouseToCell(x,y, cell_x, cell_y, c_width):
+    print('move to location')
+    print('x=', (x+(cell_x*c_width) + cell_upper_margine_2 + 3))
+    print('y=', (y+(cell_y*c_width)+cell_margine+2))
+    pyautogui.moveTo(x+(cell_x*c_width) + cell_upper_margine_2 + 3, y+(cell_y*c_width)+cell_margine+2)
+
+def mouseAction(action, x, y, cell_x, cell_y):
+    print('mouse action', action, cell_x, cell_y, x, y)
+    print('--------------')
+    if(action == mouse_right_click):
+        pyautogui.mouseDown(x=None, y=None, button='right')
+        pyautogui.mouseUp(x=None, y=None, button='right')
+    elif(action == mouse_both_click):
+        pyautogui.mouseDown(x=None, y=None, button='left')
+        pyautogui.mouseDown(x=None, y=None, button='right')
+        pyautogui.mouseUp(x=None, y=None, button='left')
+        pyautogui.mouseUp(x=None, y=None, button='right')
+
+def manipulate_cell_matrix(fileName, c_width = cell_width):
+    #print(fileName)
+    cell_matrix = []
+    im = Image.open(fileName)
+    #im.show()
+    for i in range(cell_dimentions[0]):
+        cell_matrix.append([])
+        for j in range(cell_dimentions[1]):#cell_dimentions[1]):
+            #if((i == 0 and j < 3) or (i == 9 and j < 7)):
+                #getCellImgFromImage(im,i,j, c_width).show()
+            ic = list(getCellImgFromImage(im,i,j, c_width).getdata())
+            #print('manipulate -- ', i, ' - ', j)
+            cell_matrix[i].append((findBestMatch(ic)))
+    return np.transpose(cell_matrix)
+
+
+def list_surrounded_index(matrix,x,y):
+    index = []
+    for i in range(x-1, x+2):
+        if i<0 or i+1>cell_dimentions[1]:
+            continue
+        for j in range(y-1, y+2):
+            if j<0 or j+1>cell_dimentions[0]:
+                continue
+            index.append((i,j))
+    return index
+def verify_bouble_click(matrix, x,y):
+    for i,j in list_surrounded_index(matrix,x,y):
+        if(matrix[i][j] == cell_numbers.get('covered')):
+                return True
+    return False
+
+def get_double_click_action(matrix, x, y):
+    dca = []
+    for i,j in list_surrounded_index(matrix,x,y):
+        if(matrix[i][j] < cell_numbers.get('empty')):
+                dca.append((mouse_both_click, (i,j)))
+    return dca
+
+def investigate_action(matrix, x, y):
+    actions = []
+    ni = np.zeros(9).reshape(3,3)
+    covered = []
+    marked = []
+    for i,j in list_surrounded_index(matrix,x,y):
+            if(matrix[i][j] == cell_numbers.get('covered')):
+                covered.append((i,j))
+            if(matrix[i][j] == cell_numbers.get('marked')):
+                marked.append((i,j))
+    if(len(marked) + len(covered) == matrix[x][y]+1):
+        for i in covered:
+            actions.append((mouse_right_click, i))
+    return actions
+            
+def get_actions(matrix):
+    global_actions = []
+    double_click_actions = []
+    r_actions = False
+    for i in range(cell_dimentions[1]):
+        for j in range(cell_dimentions[0]):
+            if(matrix[i][j]>cell_numbers.get('marked')):
+                return [], False
+            if(matrix[i][j] == cell_numbers.get('marked')):
+                for a2 in get_double_click_action(matrix, i, j):
+                    if(a2 in double_click_actions):
+                        pass
+                    else:
+                        double_click_actions.append(a2)
+            if(matrix[i][j] < cell_numbers.get('empty')):
+                actions = investigate_action(matrix, i, j)
+                if(len(actions) > 0):
+                    for a in actions:
+                        if(a in global_actions):
+                            pass
+                        else:
+                            global_actions.append(a)
+                            dca = get_double_click_action(matrix, a[1][0], a[1][1])
+                            for a2 in dca:
+                                if(a2 in double_click_actions):
+                                    pass
+                                else:
+                                    double_click_actions.append(a2)
+    if(len(global_actions) > 0):
+        r_actions = True
+    for a in double_click_actions:
+        if(verify_bouble_click(matrix, a[1][0], a[1][1])):
+            global_actions.append(a)
+    return global_actions, r_actions
+
+def execute_actions(x, y, actions, c_width = cell_width):
+    for a in actions:
+        action, cord = a
+        #print(a)
+        moveMouseToCell(x,y,cord[1], cord[0], c_width)
+        mouseAction(action,x,y, cord[1], cord[0])
+        
+
+
+def play(first_click, second_click):
+    mousex, mousey = first_click
+    c_width = int(round(abs(second_click[0] - first_click[0])/cell_dimentions[0]))
+    #print(c_width)
+    t = "snapshots/" + time.strftime("%Y-%m-%d-%H-%M-%S", time.gmtime()) + '.png'
+    getFullImgWithCoordinations(mousex, mousey, c_width).save(t)
+    im = Image.open(t)
+    train_cell = getCellImgFromImage(im, 0,0)
+    #print(train_cell.size)
+    #train_cell.show()
+    init_trained_cell(train_cell.size)
+    count = 0
+    action_list=[]
+    snaps_lis=[]
+    previousMatrix = []
+    while(True):
+        t = "snapshots/" + time.strftime("%Y-%m-%d-%H-%M-%S", time.gmtime()) + '.png'
+        getFullImgWithCoordinations(mousex, mousey, c_width).save(t)
+        matrix = manipulate_cell_matrix(t, c_width)
+        #print(matrix)
+        actions, ra = get_actions(matrix)
+        if(ra):
+            count = 0
+        else:
+            count += 1
+        if(len(actions) < 1 or count > 1 or np.array_equal(matrix, previousMatrix)):
+            actions = []
+            s = input('continue? y/n')
+            if(s == 'n'):
+                break
+        execute_actions(mousex, mousey, actions, c_width)
+        previousMatrix = np.copy(matrix)
+        #store_actions(action_list,snaps_list,actions,t)
+        
+class MyException(Exception): pass   
+        
+def main_function():
+    print('this application may not work in extends screen')
+    print('the application will stop if there is no obvious moves')
+    print('click on the most top-left then top-right of the board')
+    num_clicks = 0
+    first_click = 0 
+    second_click =0
+    def on_click(x, y, button, pressed):
+        nonlocal first_click, second_click, num_clicks
+        print('here')
+        print('{0} at {1}'.format(
+            'Pressed' if pressed else 'Released',
+            (x, y)))
+        if not pressed:
+            num_clicks += 1
+            #print(num_clicks)
+            if(num_clicks == 2):
+                second_click = (x,y)
+                # Stop listener
+                play(first_click, second_click)
+                return False
+            if(num_clicks == 1):
+                first_click = (x,y)
+    
+        # Collect events until released
+    with Listener(
+            on_click=on_click,
+    ) as listener:
+        try:
+            listener.join()
+        except MyException as e:
+            print('{0} was clicked'.format(e.args[0]))
+
+main_function()
